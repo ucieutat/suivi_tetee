@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f2ed" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1918" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tétées">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>Suivi tétées</title>
+<style>
+  :root {
+    --bg: #f7f2ed; --card: #ffffff; --ink: #2b2522; --muted: #8a7f78;
+    --line: #ebe3dc; --accent: #c4674b; --accent-soft: #f6e3dc; --accent-ink: #fff;
+    --danger: #b3412f; --radius: 18px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1918; --card: #262321; --ink: #f1ebe6; --muted: #a39890;
+      --line: #36312e; --accent: #d9805f; --accent-soft: #3a2a24; --accent-ink: #1b1918;
+      --danger: #e2735f;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 24px);
+    max-width: 520px; margin: 0 auto; min-height: 100vh;
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  input { font: inherit; color: var(--ink); }
+  .hidden { display: none !important; }
+
+  /* Connexion */
+  #login { padding-top: 18vh; text-align: center; }
+  #login h1 { font-size: 26px; margin: 0 0 6px; }
+  #login p { color: var(--muted); margin: 0 0 28px; }
+  .field {
+    width: 100%; padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--card); margin-bottom: 12px; font-size: 17px;
+  }
+  .btn-primary {
+    width: 100%; padding: 17px; border-radius: 16px; background: var(--accent);
+    color: var(--accent-ink); font-weight: 650; font-size: 18px;
+  }
+  .btn-primary:active { transform: scale(.98); }
+  .error { color: var(--danger); min-height: 22px; margin-top: 10px; font-size: 15px; }
+
+  /* En-tête date */
+  .daynav { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 10px; }
+  .daynav button { width: 44px; height: 44px; border-radius: 50%; font-size: 24px; color: var(--muted); }
+  .daynav button:disabled { opacity: .25; }
+  .daytitle { text-align: center; }
+  .daytitle b { display: block; font-size: 20px; }
+  .daytitle span { font-size: 14px; color: var(--muted); }
+  .daytitle button { font-size: 13px; color: var(--accent); width: auto; height: auto; }
+
+  .since {
+    text-align: center; color: var(--muted); font-size: 15px; margin-bottom: 14px;
+  }
+  .since b { color: var(--ink); }
+
+  /* Résumé */
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 10px; margin-bottom: 14px; }
+  .stat {
+    background: var(--card); border-radius: var(--radius); padding: 14px 10px; text-align: center;
+    border: 1px solid var(--line);
+  }
+  .stat .v { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .stat .v small { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .stat .l { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .stepper { display: flex; align-items: center; justify-content: space-between; }
+  .stepper button {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent); font-size: 22px; font-weight: 700; line-height: 1;
+  }
+  .stepper button:disabled { opacity: .35; }
+
+  .btn-big {
+    width: 100%; padding: 22px; border-radius: 22px; background: var(--accent);
+    color: var(--accent-ink); font-size: 20px; font-weight: 700; margin-bottom: 18px;
+    box-shadow: 0 6px 18px -8px var(--accent);
+  }
+  .btn-big:active { transform: scale(.98); }
+
+  /* Liste */
+  .list { background: var(--card); border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; }
+  .row {
+    display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 10px;
+    width: 100%; padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row:active { background: var(--accent-soft); }
+  .row .t { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .row .d { font-size: 15px; }
+  .row .gap { display: block; font-size: 13px; color: var(--muted); }
+  .row .ml { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .row .ml.none { color: var(--muted); font-weight: 400; font-size: 14px; }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+
+  .footer { display: flex; gap: 10px; margin-top: 22px; }
+  .btn-soft {
+    flex: 1; padding: 15px; border-radius: 14px; background: var(--card);
+    border: 1px solid var(--line); font-weight: 600;
+  }
+  .btn-soft.accent { color: var(--accent); }
+  .btn-link { display: block; margin: 18px auto 0; color: var(--muted); font-size: 14px; }
+
+  /* Feuille d'édition */
+  dialog {
+    border: 0; padding: 0; width: 100%; max-width: 520px; margin: auto auto 0;
+    background: var(--card); color: var(--ink); border-radius: 24px 24px 0 0;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .sheet { padding: 22px 18px calc(env(safe-area-inset-bottom) + 18px); }
+  .sheet h2 { margin: 0 0 18px; font-size: 20px; text-align: center; }
+  .sheet label { display: block; font-size: 14px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .sheet .group { margin-bottom: 20px; }
+  .sheet input[type=datetime-local], .sheet input[type=text] {
+    width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--bg); font-size: 18px; min-height: 52px;
+  }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .seg button {
+    padding: 16px 0; border-radius: 14px; background: var(--bg); border: 2px solid var(--line);
+    font-size: 22px; font-weight: 700;
+  }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .mlrow { display: flex; gap: 8px; align-items: center; }
+  .mlrow input { flex: 1; text-align: center; }
+  .mlrow button {
+    width: 56px; height: 52px; border-radius: 14px; background: var(--accent-soft);
+    color: var(--accent); font-weight: 700; font-size: 15px;
+  }
+  .sheet .actions { display: flex; gap: 10px; }
+  .sheet .actions .btn-primary { flex: 2; }
+  .sheet .actions .btn-soft { flex: 1; }
+  .btn-del { display: block; margin: 16px auto 0; color: var(--danger); font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 24px); transform: translateX(-50%);
+    background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 999px; font-size: 15px;
+    opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+  .offline { text-align: center; font-size: 13px; color: var(--muted); padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Écran de connexion -->
+<section id="login" class="hidden">
+  <h1>Suivi des tétées</h1>
+  <p>Connecte-toi pour continuer</p>
+  <form id="loginForm">
+    <input class="field" id="email" type="email" autocomplete="username" placeholder="E-mail" required>
+    <input class="field" id="password" type="password" autocomplete="current-password" placeholder="Mot de passe" required>
+    <button class="btn-primary" type="submit">Se connecter</button>
+    <div class="error" id="loginError"></div>
+  </form>
+</section>
+
+<!-- Écran principal -->
+<main id="app" class="hidden">
+  <div class="offline hidden" id="offline">Hors connexion — les saisies seront synchronisées plus tard</div>
+
+  <nav class="daynav">
+    <button id="prevDay" aria-label="Jour précédent">‹</button>
+    <div class="daytitle">
+      <b id="dayLabel">Aujourd'hui</b>
+      <span id="dayDate"></span>
+      <div><button id="goToday" class="hidden">Revenir à aujourd'hui</button></div>
+    </div>
+    <button id="nextDay" aria-label="Jour suivant">›</button>
+  </nav>
+
+  <div class="since" id="since">&nbsp;</div>
+
+  <div class="stats">
+    <div class="stat"><div class="v" id="nbTetees">0</div><div class="l">tétées</div></div>
+    <div class="stat"><div class="v" id="totalMl">0<small> ml</small></div><div class="l">lait tiré</div></div>
+    <div class="stat">
+      <div class="stepper">
+        <button id="sellesMinus" aria-label="Retirer une selle">−</button>
+        <div class="v" id="selles">0</div>
+        <button id="sellesPlus" aria-label="Ajouter une selle">+</button>
+      </div>
+      <div class="l">selles</div>
+    </div>
+  </div>
+
+  <button class="btn-big" id="newTetee">+ Nouvelle tétée</button>
+
+  <div class="list" id="list"></div>
+
+  <div class="footer">
+    <button class="btn-soft accent" id="exportBtn">Exporter (Excel)</button>
+  </div>
+  <button class="btn-link" id="logout">Se déconnecter</button>
+</main>
+
+<!-- Feuille ajout / modification -->
+<dialog id="sheet">
+  <form class="sheet" id="teteeForm" method="dialog">
+    <h2 id="sheetTitle">Nouvelle tétée</h2>
+    <div class="group">
+      <label for="when">Heure</label>
+      <input type="datetime-local" id="when" required>
+    </div>
+    <div class="group">
+      <label>Nombre de seins donnés</label>
+      <div class="seg" id="seins">
+        <button type="button" data-v="1">1</button>
+        <button type="button" data-v="2">2</button>
+        <button type="button" data-v="3">3</button>
+        <button type="button" data-v="4">4</button>
+      </div>
+    </div>
+    <div class="group">
+      <label for="ml">Lait tiré après la tétée (ml) — facultatif</label>
+      <div class="mlrow">
+        <button type="button" data-step="-5">−5</button>
+        <input type="text" id="ml" inputmode="decimal" placeholder="—" autocomplete="off">
+        <button type="button" data-step="5">+5</button>
+      </div>
+    </div>
+    <div class="error" id="formError"></div>
+    <div class="actions">
+      <button type="button" class="btn-soft" id="cancelBtn">Annuler</button>
+      <button type="submit" class="btn-primary" id="saveBtn">Enregistrer</button>
+    </div>
+    <button type="button" class="btn-del hidden" id="deleteBtn">Supprimer cette tétée</button>
+  </form>
+</dialog>
+
+<!-- Feuille export -->
+<dialog id="exportSheet">
+  <div class="sheet">
+    <h2>Exporter</h2>
+    <p id="exportInfo" style="text-align:center;color:var(--muted);margin:0 0 18px">Préparation…</p>
+    <div class="actions" style="flex-direction:column">
+      <button class="btn-primary hidden" id="shareBtn">Partager / envoyer</button>
+      <button class="btn-soft hidden" id="downloadBtn">Télécharger le fichier</button>
+      <button class="btn-soft" id="closeExport">Fermer</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+/* ============================================================
+   1) COLLE ICI LA CONFIGURATION DE TON PROJET FIREBASE
+      (Console Firebase → Paramètres du projet → Vos applications → Config)
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBI84d_1z4thXKPdT6KBtiBeVRKKihbOPs",
+  authDomain: "suiviallaitement.firebaseapp.com",
+  databaseURL: "https://suiviallaitement-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "suiviallaitement",
+  storageBucket: "suiviallaitement.firebasestorage.app",
+  messagingSenderId: "913739337080",
+  appId: "1:913739337080:web:f023a72e9948f014bb4c8d"
+};
+/* ============================================================ */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDocs, onSnapshot,
+  query, where, orderBy, limit, Timestamp, increment
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+
+if (firebaseConfig.apiKey === "A_REMPLACER") {
+  document.body.innerHTML = '<p style="padding:40px 10px;text-align:center">⚙️ La configuration Firebase n\'est pas encore renseignée dans <b>index.html</b>.<br><br>Voir le fichier LISEZMOI.md.</p>';
+  throw new Error("Config Firebase manquante");
+}
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+
+/* ---------- Utilitaires de date ---------- */
+const pad = (n) => String(n).padStart(2, "0");
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const frDate = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+const toLocalInput = (d) => `${dayKey(d)}T${hhmm(d)}`;
+const sameDay = (a, b) => dayKey(a) === dayKey(b);
+function duration(ms) {
+  const min = Math.max(0, Math.round(ms / 60000));
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h === 0) return `${m} min`;
+  return `${h} h ${pad(m)}`;
+}
+const longDate = (d) => d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+const fmtMl = (n) => (Math.round(n * 10) / 10).toLocaleString("fr-FR");
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+/* ---------- État ---------- */
+let uid = null;
+let viewDay = startOfDay(new Date());
+let dayTetees = [];        // tétées du jour affiché
+let sellesCount = 0;
+let lastTime = null;       // dernière tétée (toutes dates)
+let unsubs = [];
+let lastUnsub = null;
+
+const teteesCol = () => collection(db, "users", uid, "tetees");
+const jourDoc = (key) => doc(db, "users", uid, "jours", key);
+
+/* ---------- Authentification ---------- */
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    uid = user.uid;
+    $("login").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    viewDay = startOfDay(new Date());
+    subscribeLast();
+    subscribeDay();
+  } else {
+    uid = null;
+    unsubs.forEach((u) => u()); unsubs = [];
+    if (lastUnsub) { lastUnsub(); lastUnsub = null; }
+    $("app").classList.add("hidden");
+    $("login").classList.remove("hidden");
+  }
+});
+
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("loginError").textContent = "";
+  try {
+    await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value);
+  } catch (err) {
+    const code = err.code || "";
+    $("loginError").textContent =
+      code.includes("invalid") || code.includes("wrong-password") || code.includes("user-not-found")
+        ? "E-mail ou mot de passe incorrect."
+        : code.includes("network") ? "Pas de connexion internet."
+        : code.includes("too-many") ? "Trop de tentatives, réessaie dans un moment."
+        : "Connexion impossible (" + code + ").";
+  }
+});
+$("logout").addEventListener("click", () => {
+  if (confirm("Se déconnecter ?")) signOut(auth);
+});
+
+/* ---------- Abonnements temps réel ---------- */
+let followToday = true;
+function subscribeDay() {
+  followToday = sameDay(viewDay, new Date());
+  unsubs.forEach((u) => u()); unsubs = [];
+  const start = viewDay, end = addDays(viewDay, 1);
+  const q = query(teteesCol(),
+    where("time", ">=", Timestamp.fromDate(start)),
+    where("time", "<", Timestamp.fromDate(end)),
+    orderBy("time", "asc"));
+  unsubs.push(onSnapshot(q, (snap) => {
+    dayTetees = snap.docs.map((d) => ({ id: d.id, ...d.data(), date: d.data().time.toDate() }));
+    render();
+  }, (err) => toast("Erreur de lecture : " + err.code)));
+  unsubs.push(onSnapshot(jourDoc(dayKey(viewDay)), (snap) => {
+    sellesCount = Math.max(0, (snap.exists() && snap.data().selles) || 0);
+    renderSelles();
+  }));
+  renderHeader();
+}
+
+function subscribeLast() {
+  if (lastUnsub) lastUnsub();
+  const q = query(teteesCol(), orderBy("time", "desc"), limit(1));
+  lastUnsub = onSnapshot(q, (snap) => {
+    lastTime = snap.empty ? null : snap.docs[0].data().time.toDate();
+    renderSince();
+  });
+}
+
+/* ---------- Affichage ---------- */
+function renderHeader() {
+  const today = startOfDay(new Date());
+  const isToday = sameDay(viewDay, today);
+  const yesterday = sameDay(viewDay, addDays(today, -1));
+  $("dayLabel").textContent = isToday ? "Aujourd'hui" : yesterday ? "Hier" : longDate(viewDay).replace(/^./, (c) => c.toUpperCase());
+  $("dayDate").textContent = isToday || yesterday ? longDate(viewDay) : "";
+  $("nextDay").disabled = isToday;
+  $("goToday").classList.toggle("hidden", isToday);
+}
+
+function renderSince() {
+  $("since").innerHTML = lastTime
+    ? `Dernière tétée à <b>${hhmm(lastTime)}</b>${sameDay(lastTime, new Date()) ? "" : " (" + frDate(lastTime) + ")"} · il y a <b>${duration(Date.now() - lastTime)}</b>`
+    : "Aucune tétée enregistrée pour l'instant";
+}
+
+function renderSelles() {
+  $("selles").textContent = sellesCount;
+  $("sellesMinus").disabled = sellesCount <= 0;
+}
+
+function render() {
+  renderHeader();
+  $("nbTetees").textContent = dayTetees.length;
+  const total = dayTetees.reduce((s, t) => s + (typeof t.ml === "number" ? t.ml : 0), 0);
+  $("totalMl").innerHTML = `${fmtMl(total)}<small> ml</small>`;
+
+  const list = $("list");
+  if (!dayTetees.length) {
+    list.innerHTML = '<div class="empty">Aucune tétée ce jour-là.</div>';
+    return;
+  }
+  list.innerHTML = "";
+  // plus récente en haut ; on calcule l'écart avec la précédente (ordre chronologique)
+  for (let i = dayTetees.length - 1; i >= 0; i--) {
+    const t = dayTetees[i];
+    const prev = dayTetees[i - 1];
+    const row = document.createElement("button");
+    row.className = "row";
+    row.innerHTML = `
+      <span class="t">${hhmm(t.date)}</span>
+      <span class="d">${t.seins} sein${t.seins > 1 ? "s" : ""}
+        ${prev ? `<span class="gap">${duration(t.date - prev.date)} après la précédente</span>` : ""}
+      </span>
+      ${typeof t.ml === "number" ? `<span class="ml">${fmtMl(t.ml)} ml</span>` : `<span class="ml none">pas tiré</span>`}`;
+    row.addEventListener("click", () => openSheet(t));
+    list.appendChild(row);
+  }
+}
+
+setInterval(renderSince, 30000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && uid) {
+    renderSince();
+    // si l'appli affichait "aujourd'hui" et qu'on a changé de jour entre-temps, on avance
+    if (followToday && !sameDay(viewDay, new Date())) {
+      viewDay = startOfDay(new Date()); subscribeDay();
+    }
+  }
+});
+const updateOnline = () => $("offline").classList.toggle("hidden", navigator.onLine);
+addEventListener("online", updateOnline); addEventListener("offline", updateOnline); updateOnline();
+
+/* ---------- Navigation entre les jours ---------- */
+$("prevDay").addEventListener("click", () => { viewDay = addDays(viewDay, -1); subscribeDay(); });
+$("nextDay").addEventListener("click", () => { viewDay = addDays(viewDay, 1); subscribeDay(); });
+$("goToday").addEventListener("click", () => { viewDay = startOfDay(new Date()); subscribeDay(); });
+
+/* ---------- Selles ---------- */
+async function changeSelles(delta) {
+  if (delta < 0 && sellesCount <= 0) return;
+  sellesCount += delta; renderSelles();
+  try {
+    await setDoc(jourDoc(dayKey(viewDay)), { selles: increment(delta), date: dayKey(viewDay) }, { merge: true });
+  } catch (e) { toast("Erreur : " + e.code); }
+}
+$("sellesPlus").addEventListener("click", () => changeSelles(1));
+$("sellesMinus").addEventListener("click", () => changeSelles(-1));
+
+/* ---------- Ajout / modification d'une tétée ---------- */
+let editing = null;
+let seinsVal = null;
+
+function setSeins(v) {
+  seinsVal = v;
+  document.querySelectorAll("#seins button").forEach((b) => b.classList.toggle("on", Number(b.dataset.v) === v));
+}
+document.querySelectorAll("#seins button").forEach((b) =>
+  b.addEventListener("click", () => setSeins(Number(b.dataset.v))));
+
+document.querySelectorAll(".mlrow button").forEach((b) =>
+  b.addEventListener("click", () => {
+    const cur = parseFloat(($("ml").value || "0").replace(",", ".")) || 0;
+    const next = Math.max(0, cur + Number(b.dataset.step));
+    $("ml").value = next ? String(next).replace(".", ",") : "";
+  }));
+
+function openSheet(t = null) {
+  editing = t;
+  $("formError").textContent = "";
+  if (t) {
+    $("sheetTitle").textContent = "Modifier la tétée";
+    $("when").value = toLocalInput(t.date);
+    setSeins(t.seins);
+    $("ml").value = typeof t.ml === "number" ? String(t.ml).replace(".", ",") : "";
+    $("deleteBtn").classList.remove("hidden");
+  } else {
+    $("sheetTitle").textContent = "Nouvelle tétée";
+    const now = new Date();
+    const d = sameDay(viewDay, now) ? now
+      : new Date(viewDay.getFullYear(), viewDay.getMonth(), viewDay.getDate(), now.getHours(), now.getMinutes());
+    $("when").value = toLocalInput(d);
+    setSeins(null);
+    $("ml").value = "";
+    $("deleteBtn").classList.add("hidden");
+  }
+  $("sheet").showModal();
+}
+$("newTetee").addEventListener("click", () => openSheet());
+$("cancelBtn").addEventListener("click", () => $("sheet").close());
+
+$("teteeForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const when = $("when").value ? new Date($("when").value) : null;
+  if (!when || isNaN(when)) { $("formError").textContent = "Indique l'heure."; return; }
+  if (!seinsVal) { $("formError").textContent = "Indique le nombre de seins donnés."; return; }
+  const raw = $("ml").value.trim().replace(",", ".");
+  let ml = null;
+  if (raw !== "") {
+    ml = parseFloat(raw);
+    if (isNaN(ml) || ml < 0) { $("formError").textContent = "Quantité de lait invalide."; return; }
+  }
+  const data = { time: Timestamp.fromDate(when), seins: seinsVal, ml };
+  $("sheet").close();
+  try {
+    // pas d'await bloquant : fonctionne aussi hors connexion
+    const p = editing ? updateDoc(doc(teteesCol(), editing.id), data) : addDoc(teteesCol(), data);
+    toast(editing ? "Tétée modifiée" : "Tétée enregistrée");
+    if (!sameDay(when, viewDay)) { viewDay = startOfDay(when); subscribeDay(); }
+    await p;
+  } catch (err) { toast("Erreur d'enregistrement : " + err.code); }
+});
+
+$("deleteBtn").addEventListener("click", async () => {
+  if (!editing || !confirm("Supprimer cette tétée ?")) return;
+  const id = editing.id;
+  $("sheet").close();
+  try { const p = deleteDoc(doc(teteesCol(), id)); toast("Tétée supprimée"); await p; }
+  catch (err) { toast("Erreur : " + err.code); }
+});
+
+/* ---------- Export Excel ---------- */
+let exportFile = null;
+
+$("exportBtn").addEventListener("click", async () => {
+  exportFile = null;
+  $("exportInfo").textContent = "Préparation du fichier…";
+  $("shareBtn").classList.add("hidden");
+  $("downloadBtn").classList.add("hidden");
+  $("exportSheet").showModal();
+  try {
+    const [tSnap, jSnap] = await Promise.all([
+      getDocs(query(teteesCol(), orderBy("time", "asc"))),
+      getDocs(collection(db, "users", uid, "jours")),
+    ]);
+    const tetees = tSnap.docs.map((d) => ({ ...d.data(), date: d.data().time.toDate() }));
+    const selles = {};
+    jSnap.docs.forEach((d) => { selles[d.id] = Math.max(0, d.data().selles || 0); });
+
+    // Feuille 1 : une ligne par tétée
+    const rowsTetees = tetees.map((t) => ({
+      "Date": frDate(t.date),
+      "Heure": hhmm(t.date),
+      "Seins donnés": t.seins,
+      "Lait tiré (ml)": typeof t.ml === "number" ? t.ml : "",
+    }));
+
+    // Feuille 2 : résumé par jour
+    const days = {};
+    tetees.forEach((t) => {
+      const k = dayKey(t.date);
+      days[k] ??= { n: 0, ml: 0 };
+      days[k].n++; days[k].ml += typeof t.ml === "number" ? t.ml : 0;
+    });
+    Object.keys(selles).forEach((k) => { days[k] ??= { n: 0, ml: 0 }; });
+    const rowsJours = Object.keys(days).sort().map((k) => {
+      const [y, m, d] = k.split("-");
+      return {
+        "Date": `${d}/${m}/${y}`,
+        "Nombre de tétées": days[k].n,
+        "Total lait tiré (ml)": Math.round(days[k].ml * 10) / 10,
+        "Selles": selles[k] || 0,
+      };
+    });
+
+    const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(rowsTetees, { header: ["Date", "Heure", "Seins donnés", "Lait tiré (ml)"] });
+    ws1["!cols"] = [{ wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }];
+    const ws2 = XLSX.utils.json_to_sheet(rowsJours, { header: ["Date", "Nombre de tétées", "Total lait tiré (ml)", "Selles"] });
+    ws2["!cols"] = [{ wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 8 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Tétées");
+    XLSX.utils.book_append_sheet(wb, ws2, "Résumé par jour");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const name = `suivi-allaitement-${dayKey(new Date())}.xlsx`;
+    exportFile = new File([buf], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+    $("exportInfo").textContent = `${tetees.length} tétée(s) sur ${rowsJours.length} jour(s) — fichier prêt.`;
+    if (navigator.canShare && navigator.canShare({ files: [exportFile] })) $("shareBtn").classList.remove("hidden");
+    $("downloadBtn").classList.remove("hidden");
+  } catch (err) {
+    console.error(err);
+    $("exportInfo").textContent = "Impossible de préparer le fichier (connexion internet nécessaire pour l'export).";
+  }
+});
+
+$("shareBtn").addEventListener("click", async () => {
+  if (!exportFile) return;
+  try { await navigator.share({ files: [exportFile], title: "Suivi allaitement" }); }
+  catch (e) { if (e.name !== "AbortError") toast("Partage impossible, utilise Télécharger"); }
+});
+$("downloadBtn").addEventListener("click", () => {
+  if (!exportFile) return;
+  const url = URL.createObjectURL(exportFile);
+  const a = document.createElement("a");
+  a.href = url; a.download = exportFile.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+$("closeExport").addEventListener("click", () => $("exportSheet").close());
+</script>
+</body>
+</html>
