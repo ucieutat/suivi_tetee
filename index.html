@@ -103,6 +103,21 @@
   .row .ml { font-weight: 650; font-variant-numeric: tabular-nums; }
   .row .ml.none { color: var(--muted); font-weight: 400; font-size: 14px; }
   .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+  .row .pump { display: block; font-size: 12px; color: var(--muted); text-align: right; font-weight: 400; }
+
+  /* Commentaire du jour */
+  .comment { margin-top: 18px; }
+  .comment label { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); font-weight: 600; margin: 0 4px 8px; }
+  .comment label span { font-weight: 400; }
+  .comment textarea {
+    width: 100%; min-height: 96px; padding: 14px 16px; border-radius: var(--radius);
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    font: inherit; resize: vertical;
+  }
+  .comment textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+  .seg.two { grid-template-columns: 1fr 1fr; }
+  .seg.two button { font-size: 17px; }
 
   .footer { display: flex; gap: 10px; margin-top: 22px; }
   .btn-soft {
@@ -199,6 +214,11 @@
 
   <div class="list" id="list"></div>
 
+  <div class="comment">
+    <label for="commentaire">Commentaire du jour <span id="commentState"></span></label>
+    <textarea id="commentaire" placeholder="Note libre pour cette journée…"></textarea>
+  </div>
+
   <div class="footer">
     <button class="btn-soft accent" id="exportBtn">Exporter (Excel)</button>
   </div>
@@ -228,6 +248,13 @@
         <button type="button" data-step="-5">−5</button>
         <input type="text" id="ml" inputmode="decimal" placeholder="—" autocomplete="off">
         <button type="button" data-step="5">+5</button>
+      </div>
+    </div>
+    <div class="group">
+      <label>Tire-lait utilisé</label>
+      <div class="seg two" id="pumps">
+        <button type="button" data-v="momcozy">Momcozy</button>
+        <button type="button" data-v="spectra">Spectra</button>
       </div>
     </div>
     <div class="error" id="formError"></div>
@@ -368,8 +395,10 @@ $("logout").addEventListener("click", () => {
 /* ---------- Abonnements temps réel ---------- */
 let followToday = true;
 function subscribeDay() {
+  flushComment();
   followToday = sameDay(viewDay, new Date());
   unsubs.forEach((u) => u()); unsubs = [];
+  $("commentaire").value = ""; $("commentState").textContent = "";
   const start = viewDay, end = addDays(viewDay, 1);
   const q = query(teteesCol(),
     where("time", ">=", Timestamp.fromDate(start)),
@@ -382,6 +411,10 @@ function subscribeDay() {
   unsubs.push(onSnapshot(jourDoc(dayKey(viewDay)), (snap) => {
     sellesCount = Math.max(0, (snap.exists() && snap.data().selles) || 0);
     renderSelles();
+    // on ne remplace pas le texte pendant que l'utilisateur est en train d'écrire
+    if (document.activeElement !== $("commentaire") && !commentPending) {
+      $("commentaire").value = (snap.exists() && snap.data().commentaire) || "";
+    }
   }));
   renderHeader();
 }
@@ -440,7 +473,9 @@ function render() {
       <span class="d">${t.seins} sein${t.seins > 1 ? "s" : ""}
         ${prev ? `<span class="gap">${duration(t.date - prev.date)} après la précédente</span>` : ""}
       </span>
-      ${typeof t.ml === "number" ? `<span class="ml">${fmtMl(t.ml)} ml</span>` : `<span class="ml none">pas tiré</span>`}`;
+      ${typeof t.ml === "number"
+        ? `<span class="ml">${fmtMl(t.ml)} ml${PUMPS[t.tireLait] ? `<span class="pump">${PUMPS[t.tireLait]}</span>` : ""}</span>`
+        : `<span class="ml none">pas tiré</span>`}`;
     row.addEventListener("click", () => openSheet(t));
     list.appendChild(row);
   }
@@ -475,6 +510,29 @@ async function changeSelles(delta) {
 $("sellesPlus").addEventListener("click", () => changeSelles(1));
 $("sellesMinus").addEventListener("click", () => changeSelles(-1));
 
+/* ---------- Commentaire du jour ---------- */
+// stocké dans le même document "jours/AAAA-MM-JJ" que les selles (fusion : les selles ne sont pas touchées)
+let commentPending = null;   // { key, text } en attente d'enregistrement
+let commentTimer = null;
+function flushComment() {
+  clearTimeout(commentTimer);
+  if (!commentPending || !uid) { commentPending = null; return; }
+  const { key, text } = commentPending;
+  commentPending = null;
+  setDoc(jourDoc(key), { commentaire: text, date: key }, { merge: true })
+    .then(() => { if (key === dayKey(viewDay)) $("commentState").textContent = "enregistré"; })
+    .catch((e) => toast("Erreur commentaire : " + e.code));
+}
+$("commentaire").addEventListener("input", () => {
+  commentPending = { key: dayKey(viewDay), text: $("commentaire").value };
+  $("commentState").textContent = "…";
+  clearTimeout(commentTimer);
+  commentTimer = setTimeout(flushComment, 800);
+});
+$("commentaire").addEventListener("blur", flushComment);
+addEventListener("pagehide", flushComment);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushComment(); });
+
 /* ---------- Ajout / modification d'une tétée ---------- */
 let editing = null;
 let seinsVal = null;
@@ -485,6 +543,17 @@ function setSeins(v) {
 }
 document.querySelectorAll("#seins button").forEach((b) =>
   b.addEventListener("click", () => setSeins(Number(b.dataset.v))));
+
+const PUMPS = { momcozy: "Momcozy", spectra: "Spectra" };
+let pumpVal = null;
+function setPump(v) {
+  pumpVal = PUMPS[v] ? v : null;
+  document.querySelectorAll("#pumps button").forEach((b) => b.classList.toggle("on", b.dataset.v === pumpVal));
+}
+// un second appui sur le tire-lait sélectionné le désélectionne
+document.querySelectorAll("#pumps button").forEach((b) =>
+  b.addEventListener("click", () => setPump(pumpVal === b.dataset.v ? null : b.dataset.v)));
+const lastPump = () => { try { return localStorage.getItem("dernierTireLait"); } catch { return null; } };
 
 document.querySelectorAll(".mlrow button").forEach((b) =>
   b.addEventListener("click", () => {
@@ -501,6 +570,7 @@ function openSheet(t = null) {
     $("when").value = toLocalInput(t.date);
     setSeins(t.seins);
     $("ml").value = typeof t.ml === "number" ? String(t.ml).replace(".", ",") : "";
+    setPump(t.tireLait || null);
     $("deleteBtn").classList.remove("hidden");
   } else {
     $("sheetTitle").textContent = "Nouvelle tétée";
@@ -510,6 +580,7 @@ function openSheet(t = null) {
     $("when").value = toLocalInput(d);
     setSeins(null);
     $("ml").value = "";
+    setPump(lastPump());   // pré-sélection du dernier tire-lait utilisé
     $("deleteBtn").classList.add("hidden");
   }
   $("sheet").showModal();
@@ -529,6 +600,15 @@ $("teteeForm").addEventListener("submit", async (e) => {
     if (isNaN(ml) || ml < 0) { $("formError").textContent = "Quantité de lait invalide."; return; }
   }
   const data = { time: Timestamp.fromDate(when), seins: seinsVal, ml };
+  // tire-lait : enregistré seulement s'il y a du lait tiré ; les anciennes tétées
+  // sans tire-lait ne reçoivent aucun champ supplémentaire tant qu'on n'en choisit pas un
+  const pump = ml !== null ? pumpVal : null;
+  if (pump) {
+    data.tireLait = pump;
+    try { localStorage.setItem("dernierTireLait", pump); } catch {}
+  } else if (editing && editing.tireLait) {
+    data.tireLait = null;
+  }
   $("sheet").close();
   try {
     // pas d'await bloquant : fonctionne aussi hors connexion
@@ -562,8 +642,11 @@ $("exportBtn").addEventListener("click", async () => {
       getDocs(collection(db, "users", uid, "jours")),
     ]);
     const tetees = tSnap.docs.map((d) => ({ ...d.data(), date: d.data().time.toDate() }));
-    const selles = {};
-    jSnap.docs.forEach((d) => { selles[d.id] = Math.max(0, d.data().selles || 0); });
+    const selles = {}, commentaires = {};
+    jSnap.docs.forEach((d) => {
+      selles[d.id] = Math.max(0, d.data().selles || 0);
+      if (d.data().commentaire) commentaires[d.id] = d.data().commentaire;
+    });
 
     // Feuille 1 : une ligne par tétée
     const rowsTetees = tetees.map((t) => ({
@@ -571,6 +654,7 @@ $("exportBtn").addEventListener("click", async () => {
       "Heure": hhmm(t.date),
       "Seins donnés": t.seins,
       "Lait tiré (ml)": typeof t.ml === "number" ? t.ml : "",
+      "Tire-lait": PUMPS[t.tireLait] || "",
     }));
 
     // Feuille 2 : résumé par jour
@@ -588,15 +672,16 @@ $("exportBtn").addEventListener("click", async () => {
         "Nombre de tétées": days[k].n,
         "Total lait tiré (ml)": Math.round(days[k].ml * 10) / 10,
         "Selles": selles[k] || 0,
+        "Commentaire": commentaires[k] || "",
       };
     });
 
     const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
     const wb = XLSX.utils.book_new();
-    const ws1 = XLSX.utils.json_to_sheet(rowsTetees, { header: ["Date", "Heure", "Seins donnés", "Lait tiré (ml)"] });
-    ws1["!cols"] = [{ wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }];
-    const ws2 = XLSX.utils.json_to_sheet(rowsJours, { header: ["Date", "Nombre de tétées", "Total lait tiré (ml)", "Selles"] });
-    ws2["!cols"] = [{ wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 8 }];
+    const ws1 = XLSX.utils.json_to_sheet(rowsTetees, { header: ["Date", "Heure", "Seins donnés", "Lait tiré (ml)", "Tire-lait"] });
+    ws1["!cols"] = [{ wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 12 }];
+    const ws2 = XLSX.utils.json_to_sheet(rowsJours, { header: ["Date", "Nombre de tétées", "Total lait tiré (ml)", "Selles", "Commentaire"] });
+    ws2["!cols"] = [{ wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 50 }];
     XLSX.utils.book_append_sheet(wb, ws1, "Tétées");
     XLSX.utils.book_append_sheet(wb, ws2, "Résumé par jour");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
