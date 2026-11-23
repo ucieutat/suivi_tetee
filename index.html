@@ -116,6 +116,33 @@
   }
   .comment textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
+  /* Onglets */
+  .tabs {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-top: 12px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  }
+  .tabs button { padding: 10px 0; border-radius: 10px; font-weight: 650; color: var(--muted); }
+  .tabs button.on { background: var(--accent); color: var(--accent-ink); }
+
+  /* Sommeil */
+  .card {
+    background: var(--card); border-radius: var(--radius); border: 1px solid var(--line);
+    padding: 14px 14px 10px; margin-bottom: 14px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .card h3 b { color: var(--ink); }
+  .card svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart-axis { fill: var(--muted); font-size: 10px; font-family: inherit; }
+  .chart-grid { stroke: var(--line); stroke-width: 1; }
+  .chart-track { fill: var(--bg); }
+  .chart-mark { fill: var(--accent); }
+  .chart-mark.soft { fill: var(--accent); opacity: .45; }
+  .chart-now { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 2 2; }
+  .chart-value { fill: var(--ink); font-size: 11px; font-weight: 700; font-family: inherit; }
+  .chart-hit { fill: transparent; cursor: pointer; }
+  .btn-big.awake { background: var(--card); color: var(--accent); border: 2px solid var(--accent); box-shadow: none; }
+  .row .ongoing { color: var(--accent); }
+
   .seg.two { grid-template-columns: 1fr 1fr; }
   .seg.two button { font-size: 17px; }
 
@@ -185,6 +212,11 @@
 <main id="app" class="hidden">
   <div class="offline hidden" id="offline">Hors connexion — les saisies seront synchronisées plus tard</div>
 
+  <div class="tabs" role="tablist">
+    <button type="button" data-tab="tetees" role="tab">Tétées</button>
+    <button type="button" data-tab="sommeil" role="tab">Sommeil</button>
+  </div>
+
   <nav class="daynav">
     <button id="prevDay" aria-label="Jour précédent">‹</button>
     <div class="daytitle">
@@ -195,6 +227,7 @@
     <button id="nextDay" aria-label="Jour suivant">›</button>
   </nav>
 
+  <section id="paneTetees">
   <div class="since" id="since">&nbsp;</div>
 
   <div class="stats">
@@ -213,6 +246,31 @@
   <button class="btn-big" id="newTetee">+ Nouvelle tétée</button>
 
   <div class="list" id="list"></div>
+  </section>
+
+  <section id="paneSommeil" class="hidden">
+    <div class="since" id="sleepSince">&nbsp;</div>
+    <div class="stats">
+      <div class="stat"><div class="v" id="nbDodos">0</div><div class="l">dodos</div></div>
+      <div class="stat"><div class="v" id="totalSleep">0<small> h</small></div><div class="l">de sommeil</div></div>
+      <div class="stat"><div class="v" id="longestSleep">—</div><div class="l">plus long</div></div>
+    </div>
+
+    <button class="btn-big" id="sleepBtn">Elle s'endort</button>
+
+    <div class="card">
+      <h3>Journée heure par heure</h3>
+      <svg id="dayTimeline" viewBox="0 0 340 46" role="img" aria-label="Périodes de sommeil de la journée"></svg>
+    </div>
+
+    <div class="list" id="sleepList"></div>
+    <button class="btn-link" id="addSleep" style="color:var(--accent)">+ Ajouter un dodo oublié</button>
+
+    <div class="card" style="margin-top:18px">
+      <h3 id="chartTitle">Heures de sommeil par jour</h3>
+      <svg id="sleepChart" viewBox="0 0 340 170" role="img" aria-label="Heures de sommeil des 14 derniers jours"></svg>
+    </div>
+  </section>
 
   <div class="comment">
     <label for="commentaire">Commentaire du jour <span id="commentState"></span></label>
@@ -263,6 +321,28 @@
       <button type="submit" class="btn-primary" id="saveBtn">Enregistrer</button>
     </div>
     <button type="button" class="btn-del hidden" id="deleteBtn">Supprimer cette tétée</button>
+  </form>
+</dialog>
+
+<!-- Feuille ajout / modification d'un dodo -->
+<dialog id="sleepSheet">
+  <form class="sheet" id="sleepForm" method="dialog">
+    <h2 id="sleepTitle">Dodo</h2>
+    <div class="group">
+      <label for="sleepStart">Endormie à</label>
+      <input type="datetime-local" id="sleepStart" required>
+    </div>
+    <div class="group">
+      <label for="sleepEnd">Réveillée à</label>
+      <input type="datetime-local" id="sleepEnd">
+      <button type="button" class="btn-link" id="sleepStillAsleep" style="margin-top:8px;color:var(--accent)">Elle dort encore (effacer l'heure de réveil)</button>
+    </div>
+    <div class="error" id="sleepError"></div>
+    <div class="actions">
+      <button type="button" class="btn-soft" id="sleepCancel">Annuler</button>
+      <button type="submit" class="btn-primary">Enregistrer</button>
+    </div>
+    <button type="button" class="btn-del hidden" id="sleepDelete">Supprimer ce dodo</button>
   </form>
 </dialog>
 
@@ -351,6 +431,7 @@ let sellesCount = 0;
 let lastTime = null;       // dernière tétée (toutes dates)
 let unsubs = [];
 let lastUnsub = null;
+let latestDodoUnsub = null;
 
 const teteesCol = () => collection(db, "users", uid, "tetees");
 const jourDoc = (key) => doc(db, "users", uid, "jours", key);
@@ -363,11 +444,14 @@ onAuthStateChanged(auth, (user) => {
     $("app").classList.remove("hidden");
     viewDay = startOfDay(new Date());
     subscribeLast();
+    subscribeLatestDodo();
     subscribeDay();
   } else {
     uid = null;
     unsubs.forEach((u) => u()); unsubs = [];
     if (lastUnsub) { lastUnsub(); lastUnsub = null; }
+    if (latestDodoUnsub) { latestDodoUnsub(); latestDodoUnsub = null; }
+    latestDodo = null; rangeDodos = [];
     $("app").classList.add("hidden");
     $("login").classList.remove("hidden");
   }
@@ -416,7 +500,10 @@ function subscribeDay() {
       $("commentaire").value = (snap.exists() && snap.data().commentaire) || "";
     }
   }));
+  rangeDodos = [];
+  unsubs.push(subscribeSleepRange());
   renderHeader();
+  renderSleep();
 }
 
 function subscribeLast() {
@@ -484,7 +571,7 @@ function render() {
 setInterval(renderSince, 30000);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && uid) {
-    renderSince();
+    renderSince(); renderSleep();
     // si l'appli affichait "aujourd'hui" et qu'on a changé de jour entre-temps, on avance
     if (followToday && !sameDay(viewDay, new Date())) {
       viewDay = startOfDay(new Date()); subscribeDay();
@@ -532,6 +619,276 @@ $("commentaire").addEventListener("input", () => {
 $("commentaire").addEventListener("blur", flushComment);
 addEventListener("pagehide", flushComment);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushComment(); });
+
+/* ---------- Onglets ---------- */
+let currentTab = (() => { try { return localStorage.getItem("onglet") || "tetees"; } catch { return "tetees"; } })();
+function showTab(tab) {
+  currentTab = tab === "sommeil" ? "sommeil" : "tetees";
+  try { localStorage.setItem("onglet", currentTab); } catch {}
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === currentTab));
+  $("paneTetees").classList.toggle("hidden", currentTab !== "tetees");
+  $("paneSommeil").classList.toggle("hidden", currentTab !== "sommeil");
+  if (currentTab === "sommeil") renderSleep();
+}
+document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+showTab(currentTab);
+
+/* ---------- Sommeil ----------
+   Collection "users/{uid}/dodos" : { debut: Timestamp, fin: Timestamp | null }
+   fin = null  ->  dodo en cours (elle dort encore) */
+const CHART_DAYS = 14;
+const dodosCol = () => collection(db, "users", uid, "dodos");
+const mapDodo = (d) => {
+  const x = d.data();
+  return { id: d.id, debut: x.debut.toDate(), fin: x.fin ? x.fin.toDate() : null };
+};
+let rangeDodos = [];      // dodos commencés dans la fenêtre du graphique
+let latestDodo = null;    // dernier dodo (toutes dates), pour savoir si elle dort
+const ongoing = () => (latestDodo && !latestDodo.fin ? latestDodo : null);
+const dodoEnd = (d) => d.fin || new Date();
+
+function subscribeLatestDodo() {
+  if (latestDodoUnsub) latestDodoUnsub();
+  latestDodoUnsub = onSnapshot(query(dodosCol(), orderBy("debut", "desc"), limit(1)), (snap) => {
+    latestDodo = snap.empty ? null : mapDodo(snap.docs[0]);
+    renderSleep();
+  });
+}
+
+function subscribeSleepRange() {
+  const from = addDays(viewDay, -CHART_DAYS), to = addDays(viewDay, 1);
+  return onSnapshot(query(dodosCol(),
+    where("debut", ">=", Timestamp.fromDate(from)),
+    where("debut", "<", Timestamp.fromDate(to)),
+    orderBy("debut", "asc")), (snap) => {
+      rangeDodos = snap.docs.map(mapDodo);
+      renderSleep();
+    }, (err) => toast("Erreur de lecture : " + err.code));
+}
+
+// temps de sommeil (ms) compris dans la journée commençant à dayStart
+function sleepMsInDay(dayStart, list) {
+  const s = dayStart.getTime(), e = addDays(dayStart, 1).getTime();
+  let ms = 0;
+  for (const d of list) {
+    const a = Math.max(d.debut.getTime(), s), b = Math.min(dodoEnd(d).getTime(), e);
+    if (b > a) ms += b - a;
+  }
+  return ms;
+}
+const fmtH = (ms) => {
+  const min = Math.round(ms / 60000);
+  return `${Math.floor(min / 60)} h ${pad(min % 60)}`;
+};
+const fmtHShort = (ms) => {
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min}<small> min</small>`;
+  return `${Math.floor(min / 60)}<small> h </small>${pad(min % 60)}`;
+};
+
+function renderSleepSince() {
+  const cur = ongoing();
+  if (cur) {
+    $("sleepSince").innerHTML = `Endormie à <b>${hhmm(cur.debut)}</b>${sameDay(cur.debut, new Date()) ? "" : " (" + frDate(cur.debut) + ")"} · dort depuis <b>${duration(Date.now() - cur.debut)}</b>`;
+  } else if (latestDodo) {
+    const f = latestDodo.fin;
+    $("sleepSince").innerHTML = `Réveillée à <b>${hhmm(f)}</b>${sameDay(f, new Date()) ? "" : " (" + frDate(f) + ")"} · éveillée depuis <b>${duration(Date.now() - f)}</b>`;
+  } else {
+    $("sleepSince").textContent = "Aucun dodo enregistré pour l'instant";
+  }
+  const btn = $("sleepBtn");
+  btn.textContent = cur ? "Elle se réveille" : "Elle s'endort";
+  btn.classList.toggle("awake", !!cur);
+}
+
+function renderSleep() {
+  if (!uid) return;
+  renderSleepSince();
+  if (currentTab !== "sommeil") return;
+
+  const start = viewDay, end = addDays(viewDay, 1);
+  // la liste du dodo en cours peut ne pas encore être dans rangeDodos : on la complète
+  const all = [...rangeDodos];
+  const cur = ongoing();
+  if (cur && !all.some((d) => d.id === cur.id) && cur.debut < end) all.push(cur);
+  const inDay = all.filter((d) => d.debut < end && dodoEnd(d) > start);
+  const startedToday = inDay.filter((d) => d.debut >= start);
+
+  $("nbDodos").textContent = startedToday.length;
+  $("totalSleep").innerHTML = fmtHShort(sleepMsInDay(start, all));
+  const longest = startedToday.reduce((m, d) => Math.max(m, dodoEnd(d) - d.debut), 0);
+  $("longestSleep").innerHTML = longest ? fmtHShort(longest) : "—";
+
+  renderTimeline(inDay);
+  renderSleepList(inDay);
+  renderChart(all);
+}
+
+function renderSleepList(inDay) {
+  const list = $("sleepList");
+  if (!inDay.length) { list.innerHTML = '<div class="empty">Aucun dodo ce jour-là.</div>'; return; }
+  list.innerHTML = "";
+  for (let i = inDay.length - 1; i >= 0; i--) {
+    const d = inDay[i];
+    const row = document.createElement("button");
+    row.className = "row";
+    const before = d.debut < viewDay;
+    const after = d.fin && d.fin >= addDays(viewDay, 1);
+    row.innerHTML = `
+      <span class="t">${hhmm(d.debut)}</span>
+      <span class="d">${d.fin ? `→ ${hhmm(d.fin)}` : `<span class="ongoing">dort encore</span>`}
+        ${before ? `<span class="gap">commencé la veille</span>` : after ? `<span class="gap">se termine le lendemain</span>` : ""}
+      </span>
+      <span class="ml">${duration(dodoEnd(d) - d.debut)}</span>`;
+    row.addEventListener("click", () => openSleepSheet(d));
+    list.appendChild(row);
+  }
+}
+
+// Frise 0 h - 24 h de la journée affichée
+function renderTimeline(inDay) {
+  const W = 340, X0 = 4, X1 = W - 4, Y = 6, H = 20;
+  const s = viewDay.getTime(), span = 86400000;
+  const x = (t) => X0 + (X1 - X0) * Math.min(1, Math.max(0, (t - s) / span));
+  let out = `<rect class="chart-track" x="${X0}" y="${Y}" width="${X1 - X0}" height="${H}" rx="4"/>`;
+  for (const d of inDay) {
+    const a = x(d.debut.getTime()), b = x(dodoEnd(d).getTime());
+    if (b - a < 0.5) continue;
+    out += `<rect class="chart-mark${d.fin ? "" : " soft"}" x="${a.toFixed(1)}" y="${Y}" width="${Math.max(2, b - a).toFixed(1)}" height="${H}" rx="3"><title>${hhmm(d.debut)} → ${d.fin ? hhmm(d.fin) : "en cours"} (${duration(dodoEnd(d) - d.debut)})</title></rect>`;
+  }
+  for (const h of [0, 6, 12, 18, 24]) {
+    const xx = X0 + (X1 - X0) * h / 24;
+    out += `<text class="chart-axis" x="${xx}" y="${Y + H + 14}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${h} h</text>`;
+  }
+  if (sameDay(viewDay, new Date())) {
+    const n = x(Date.now());
+    out += `<line class="chart-now" x1="${n}" x2="${n}" y1="${Y - 3}" y2="${Y + H + 3}"/>`;
+  }
+  $("dayTimeline").innerHTML = out;
+}
+
+// Barres : heures de sommeil des 14 jours jusqu'au jour affiché (toucher une barre pour aller à ce jour)
+function renderChart(all) {
+  const W = 340, H = 170, L = 26, R = 4, T = 18, B = 22;
+  const days = [];
+  for (let i = CHART_DAYS - 1; i >= 0; i--) {
+    const day = addDays(viewDay, -i);
+    days.push({ day, ms: day > new Date() ? 0 : sleepMsInDay(day, all) });
+  }
+  const maxH = Math.max(4, ...days.map((d) => d.ms / 3600000));
+  const step = maxH > 16 ? 6 : maxH > 8 ? 4 : 2;
+  const top = Math.ceil(maxH / step) * step;
+  const y = (h) => T + (H - T - B) * (1 - h / top);
+  const slot = (W - L - R) / CHART_DAYS, bw = Math.min(16, slot - 2);
+  let out = "";
+  for (let h = 0; h <= top; h += step) {
+    out += `<line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y(h)}" y2="${y(h)}"/>`;
+    out += `<text class="chart-axis" x="${L - 5}" y="${y(h) + 3.5}" text-anchor="end">${h} h</text>`;
+  }
+  days.forEach((d, i) => {
+    const cx = L + slot * i + slot / 2, h = d.ms / 3600000, yy = y(h), base = y(0);
+    const selected = i === CHART_DAYS - 1;
+    if (h > 0) {
+      const r = Math.min(4, base - yy, bw / 2), x0 = cx - bw / 2;
+      out += `<path class="chart-mark${selected ? "" : " soft"}" d="M${x0},${base}V${yy + r}Q${x0},${yy} ${x0 + r},${yy}H${x0 + bw - r}Q${x0 + bw},${yy} ${x0 + bw},${yy + r}V${base}Z"/>`;
+    }
+    if (selected) out += `<text class="chart-value" x="${cx}" y="${yy - 5}" text-anchor="middle">${fmtH(d.ms).replace(" ", "")}</text>`;
+    if (i % 2 === (CHART_DAYS - 1) % 2) {
+      out += `<text class="chart-axis" x="${cx}" y="${H - 6}" text-anchor="middle">${pad(d.day.getDate())}/${pad(d.day.getMonth() + 1)}</text>`;
+    }
+    out += `<rect class="chart-hit" data-day="${dayKey(d.day)}" x="${L + slot * i}" y="${T - 10}" width="${slot}" height="${H - T - B + 10}"><title>${frDate(d.day)} : ${fmtH(d.ms)}</title></rect>`;
+  });
+  const svg = $("sleepChart");
+  svg.innerHTML = out;
+  svg.querySelectorAll(".chart-hit").forEach((r) => r.addEventListener("click", () => {
+    const [yy, mm, dd] = r.dataset.day.split("-").map(Number);
+    const d = new Date(yy, mm - 1, dd);
+    if (!sameDay(d, viewDay) && d <= new Date()) { viewDay = d; subscribeDay(); }
+  }));
+  $("chartTitle").innerHTML = `Heures de sommeil par jour · <b>${CHART_DAYS} jours</b>`;
+}
+
+/* Bouton principal : endormie / réveillée (toujours à l'heure actuelle) */
+$("sleepBtn").addEventListener("click", async () => {
+  const cur = ongoing();
+  try {
+    let p;
+    if (cur) {
+      p = updateDoc(doc(dodosCol(), cur.id), { fin: Timestamp.now() });
+      toast("Réveil enregistré");
+    } else {
+      p = addDoc(dodosCol(), { debut: Timestamp.now(), fin: null });
+      toast("Dodo commencé");
+    }
+    if (!sameDay(viewDay, new Date())) { viewDay = startOfDay(new Date()); subscribeDay(); }
+    await p;
+  } catch (err) { toast("Erreur d'enregistrement : " + err.code); }
+});
+
+/* Ajout / modification a posteriori */
+let editingDodo = null;
+function openSleepSheet(d = null) {
+  editingDodo = d;
+  $("sleepError").textContent = "";
+  if (d) {
+    $("sleepTitle").textContent = "Modifier le dodo";
+    $("sleepStart").value = toLocalInput(d.debut);
+    $("sleepEnd").value = d.fin ? toLocalInput(d.fin) : "";
+    $("sleepDelete").classList.remove("hidden");
+  } else {
+    $("sleepTitle").textContent = "Ajouter un dodo";
+    const now = new Date();
+    const base = sameDay(viewDay, now) ? now
+      : new Date(viewDay.getFullYear(), viewDay.getMonth(), viewDay.getDate(), now.getHours(), now.getMinutes());
+    $("sleepStart").value = toLocalInput(new Date(base - 3600000));
+    $("sleepEnd").value = toLocalInput(base);
+    $("sleepDelete").classList.add("hidden");
+  }
+  $("sleepSheet").showModal();
+}
+$("addSleep").addEventListener("click", () => openSleepSheet());
+$("sleepCancel").addEventListener("click", () => $("sleepSheet").close());
+$("sleepStillAsleep").addEventListener("click", () => { $("sleepEnd").value = ""; });
+
+$("sleepForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = (m) => { $("sleepError").textContent = m; };
+  const debut = $("sleepStart").value ? new Date($("sleepStart").value) : null;
+  const fin = $("sleepEnd").value ? new Date($("sleepEnd").value) : null;
+  const soon = Date.now() + 60000;
+  if (!debut || isNaN(debut)) return err("Indique l'heure d'endormissement.");
+  if (debut > soon) return err("L'heure d'endormissement est dans le futur.");
+  if (fin) {
+    if (isNaN(fin)) return err("Heure de réveil invalide.");
+    if (fin <= debut) return err("Le réveil doit être après l'endormissement.");
+    if (fin > soon) return err("L'heure de réveil est dans le futur.");
+  } else {
+    // un seul dodo "en cours", et ce doit être le plus récent
+    const cur = ongoing();
+    if (cur && (!editingDodo || cur.id !== editingDodo.id)) return err("Un dodo est déjà en cours : enregistre d'abord son réveil.");
+    if (latestDodo && (!editingDodo || latestDodo.id !== editingDodo.id) && latestDodo.debut > debut)
+      return err("Indique l'heure de réveil (il y a eu un dodo plus récent).");
+  }
+  const data = { debut: Timestamp.fromDate(debut), fin: fin ? Timestamp.fromDate(fin) : null };
+  const wasEditing = editingDodo;
+  $("sleepSheet").close();
+  try {
+    const p = wasEditing ? updateDoc(doc(dodosCol(), wasEditing.id), data) : addDoc(dodosCol(), data);
+    toast(wasEditing ? "Dodo modifié" : "Dodo enregistré");
+    if (!sameDay(debut, viewDay) && !(fin && sameDay(fin, viewDay))) { viewDay = startOfDay(debut); subscribeDay(); }
+    await p;
+  } catch (e2) { toast("Erreur d'enregistrement : " + e2.code); }
+});
+
+$("sleepDelete").addEventListener("click", async () => {
+  if (!editingDodo || !confirm("Supprimer ce dodo ?")) return;
+  const id = editingDodo.id;
+  $("sleepSheet").close();
+  try { const p = deleteDoc(doc(dodosCol(), id)); toast("Dodo supprimé"); await p; }
+  catch (err) { toast("Erreur : " + err.code); }
+});
+
+setInterval(renderSleep, 30000);
 
 /* ---------- Ajout / modification d'une tétée ---------- */
 let editing = null;
@@ -637,10 +994,12 @@ $("exportBtn").addEventListener("click", async () => {
   $("downloadBtn").classList.add("hidden");
   $("exportSheet").showModal();
   try {
-    const [tSnap, jSnap] = await Promise.all([
+    const [tSnap, jSnap, dSnap] = await Promise.all([
       getDocs(query(teteesCol(), orderBy("time", "asc"))),
       getDocs(collection(db, "users", uid, "jours")),
+      getDocs(query(dodosCol(), orderBy("debut", "asc"))),
     ]);
+    const dodos = dSnap.docs.map(mapDodo);
     const tetees = tSnap.docs.map((d) => ({ ...d.data(), date: d.data().time.toDate() }));
     const selles = {}, commentaires = {};
     jSnap.docs.forEach((d) => {
@@ -665,6 +1024,18 @@ $("exportBtn").addEventListener("click", async () => {
       days[k].n++; days[k].ml += typeof t.ml === "number" ? t.ml : 0;
     });
     Object.keys(selles).forEach((k) => { days[k] ??= { n: 0, ml: 0 }; });
+    // sommeil : nombre de dodos commencés dans la journée + temps dormi dans la journée (coupé à minuit)
+    const sleepDays = {};
+    dodos.forEach((d) => {
+      const k0 = dayKey(d.debut);
+      sleepDays[k0] ??= { n: 0, ms: 0 }; sleepDays[k0].n++;
+      for (let day = startOfDay(d.debut); day < dodoEnd(d); day = addDays(day, 1)) {
+        const k = dayKey(day);
+        sleepDays[k] ??= { n: 0, ms: 0 };
+        sleepDays[k].ms += sleepMsInDay(day, [d]);
+      }
+    });
+    Object.keys(sleepDays).forEach((k) => { days[k] ??= { n: 0, ml: 0 }; });
     const rowsJours = Object.keys(days).sort().map((k) => {
       const [y, m, d] = k.split("-");
       return {
@@ -672,6 +1043,8 @@ $("exportBtn").addEventListener("click", async () => {
         "Nombre de tétées": days[k].n,
         "Total lait tiré (ml)": Math.round(days[k].ml * 10) / 10,
         "Selles": selles[k] || 0,
+        "Nombre de dodos": sleepDays[k] ? sleepDays[k].n : 0,
+        "Sommeil total (h)": sleepDays[k] ? Math.round(sleepDays[k].ms / 360000) / 10 : 0,
         "Commentaire": commentaires[k] || "",
       };
     });
@@ -680,15 +1053,24 @@ $("exportBtn").addEventListener("click", async () => {
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.json_to_sheet(rowsTetees, { header: ["Date", "Heure", "Seins donnés", "Lait tiré (ml)", "Tire-lait"] });
     ws1["!cols"] = [{ wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 12 }];
-    const ws2 = XLSX.utils.json_to_sheet(rowsJours, { header: ["Date", "Nombre de tétées", "Total lait tiré (ml)", "Selles", "Commentaire"] });
-    ws2["!cols"] = [{ wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 50 }];
+    const ws2 = XLSX.utils.json_to_sheet(rowsJours, { header: ["Date", "Nombre de tétées", "Total lait tiré (ml)", "Selles", "Nombre de dodos", "Sommeil total (h)", "Commentaire"] });
+    ws2["!cols"] = [{ wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 16 }, { wch: 18 }, { wch: 50 }];
+    const rowsDodos = dodos.map((d) => ({
+      "Date": frDate(d.debut),
+      "Endormie à": hhmm(d.debut),
+      "Réveillée à": d.fin ? (sameDay(d.fin, d.debut) ? hhmm(d.fin) : `${hhmm(d.fin)} (${frDate(d.fin)})`) : "en cours",
+      "Durée (min)": d.fin ? Math.round((d.fin - d.debut) / 60000) : "",
+    }));
+    const ws3 = XLSX.utils.json_to_sheet(rowsDodos, { header: ["Date", "Endormie à", "Réveillée à", "Durée (min)"] });
+    ws3["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, ws1, "Tétées");
     XLSX.utils.book_append_sheet(wb, ws2, "Résumé par jour");
+    XLSX.utils.book_append_sheet(wb, ws3, "Sommeil");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const name = `suivi-allaitement-${dayKey(new Date())}.xlsx`;
     exportFile = new File([buf], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
-    $("exportInfo").textContent = `${tetees.length} tétée(s) sur ${rowsJours.length} jour(s) — fichier prêt.`;
+    $("exportInfo").textContent = `${tetees.length} tétée(s), ${dodos.length} dodo(s) sur ${rowsJours.length} jour(s) — fichier prêt.`;
     if (navigator.canShare && navigator.canShare({ files: [exportFile] })) $("shareBtn").classList.remove("hidden");
     $("downloadBtn").classList.remove("hidden");
   } catch (err) {
